@@ -31,7 +31,7 @@ namespace BugPro
                 .OnEntryFrom(_assignTrigger, assignee => Assignee = assignee)
                 .Permit(Trigger.Resolve, State.InTesting)
                 .Permit(Trigger.Defer, State.Deferred)
-                .PermitReentry(Trigger.Assign); // Исправлено: используем PermitReentry
+                .PermitReentry(Trigger.Assign);
 
             _machine.Configure(State.Deferred)
                 .Permit(Trigger.Assign, State.Assigned);

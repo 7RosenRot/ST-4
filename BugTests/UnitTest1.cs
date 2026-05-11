@@ -15,7 +15,6 @@ namespace BugTests
             _bug = new Bug("Test Bug");
         }
 
-        // Вспомогательный метод, чтобы не дублировать try-catch
         private void AssertThrowsInvalidOp(Action action)
         {
             try
@@ -25,15 +24,13 @@ namespace BugTests
             }
             catch (InvalidOperationException)
             {
-                // Успех — исключение поймано
+                // InvalidOperationException
             }
             catch (Exception ex)
             {
                 Assert.Fail($"Ожидалось InvalidOperationException, но получено {ex.GetType().Name}");
             }
         }
-
-        // --- Позитивные тесты ---
 
         [TestMethod]
         public void InitialState_ShouldBeOpen() 
@@ -154,8 +151,6 @@ namespace BugTests
             _bug.Close();
             Assert.AreEqual(State.Closed, _bug.CurrentState);
         }
-
-        // --- Негативные тесты (через вспомогательный метод) ---
 
         [TestMethod]
         public void Open_Close_ShouldThrowException() 
