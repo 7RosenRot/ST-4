@@ -1,149 +1,79 @@
 using System;
 using Stateless;
 
-namespace BugPro;
+namespace BugPro
+{
+    public enum State { Open, Assigned, Deferred, Resolved, Closed, InTesting, Reopened }
+    public enum Trigger { Assign, Defer, Resolve, Close, Reopen, Test, Reject }
 
-public enum BugState {
-  New,
-  Triage,
-  Fixing,
-  Verification,
-  Closed,
+    public class Bug
+    {
+        private State _state = State.Open;
+        private readonly StateMachine<State, Trigger> _machine;
+        
+        public string? Assignee { get; private set; }
+        public string Title { get; }
+        public State CurrentState => _machine.State;
 
-  Returned,
-  Reopened,
-  NeedInfo,
+        private readonly StateMachine<State, Trigger>.TriggerWithParameters<string> _assignTrigger;
 
-  OtherProduct,
-  NeedDecisionLater,
+        public Bug(string title)
+        {
+            Title = title;
+            _machine = new StateMachine<State, Trigger>(() => _state, s => _state = s);
 
-  NotABug,
-  WontFix,
-  Duplicate,
-  NotReproducible
-}
+            _assignTrigger = _machine.SetTriggerParameters<string>(Trigger.Assign);
 
-public enum BugTrigger {
-  StartTriage,
-  StartFix,
-  MarkFixed,
+            _machine.Configure(State.Open)
+                .Permit(Trigger.Assign, State.Assigned);
 
-  Approve,
-  Reject,
-  Return,
-  Reopen,
+            _machine.Configure(State.Assigned)
+                .OnEntryFrom(_assignTrigger, assignee => Assignee = assignee)
+                .Permit(Trigger.Resolve, State.InTesting)
+                .Permit(Trigger.Defer, State.Deferred)
+                .PermitReentry(Trigger.Assign); // Исправлено: используем PermitReentry
 
-  NeedInfo,
-  OtherProduct,
-  NeedDecisionLater,
+            _machine.Configure(State.Deferred)
+                .Permit(Trigger.Assign, State.Assigned);
 
-  MarkNotBug,
-  MarkWontFix,
-  MarkDuplicate,
-  MarkNotRepro
-}
+            _machine.Configure(State.InTesting)
+                .Permit(Trigger.Resolve, State.Resolved)
+                .Permit(Trigger.Reject, State.Assigned);
 
-public class Bug {
-  private readonly StateMachine<BugState, BugTrigger> _machine;
+            _machine.Configure(State.Resolved)
+                .Permit(Trigger.Close, State.Closed)
+                .Permit(Trigger.Reopen, State.Reopened);
 
-  public BugState State => _machine.State;
+            _machine.Configure(State.Reopened)
+                .Permit(Trigger.Assign, State.Assigned);
 
-  public Bug(BugState initialState = BugState.New) {
-    _machine = new StateMachine<BugState, BugTrigger>(initialState);
-    Configure();
-  }
+            _machine.Configure(State.Closed)
+                .Permit(Trigger.Reopen, State.Reopened);
+        }
 
-  public bool CanFire(BugTrigger trigger) => _machine.CanFire(trigger);
-  public void Fire(BugTrigger trigger) => _machine.Fire(trigger);
-  public void StartTriage() => _machine.Fire(BugTrigger.StartTriage);
-  public void StartFix() => _machine.Fire(BugTrigger.StartFix);
-  public void MarkFixed() => _machine.Fire(BugTrigger.MarkFixed);
-  public void Approve() => _machine.Fire(BugTrigger.Approve);
-  public void Reject() => _machine.Fire(BugTrigger.Reject);
-  public void Return() => _machine.Fire(BugTrigger.Return);
-  public void Reopen() => _machine.Fire(BugTrigger.Reopen);
-  public void NeedInfo() => _machine.Fire(BugTrigger.NeedInfo);
-  public void OtherProduct() => _machine.Fire(BugTrigger.OtherProduct);
-  public void
-  NeedDecisionLater() => _machine.Fire(BugTrigger.NeedDecisionLater);
-  public void MarkNotBug() => _machine.Fire(BugTrigger.MarkNotBug);
-  public void MarkWontFix() => _machine.Fire(BugTrigger.MarkWontFix);
-  public void MarkDuplicate() => _machine.Fire(BugTrigger.MarkDuplicate);
-  public void MarkNotRepro() => _machine.Fire(BugTrigger.MarkNotRepro);
+        public void Assign(string assignee) => _machine.Fire(_assignTrigger, assignee);
+        public void Defer() => _machine.Fire(Trigger.Defer);
+        public void Resolve() => _machine.Fire(Trigger.Resolve);
+        public void Close() => _machine.Fire(Trigger.Close);
+        public void Reopen() => _machine.Fire(Trigger.Reopen);
+        public void SendToTest() => _machine.Fire(Trigger.Resolve);
+        public void Reject() => _machine.Fire(Trigger.Reject);
 
-  private void Configure() {
-    _machine.Configure(BugState.New)
-        .Permit(BugTrigger.StartTriage, BugState.Triage);
+        public bool CanFire(Trigger trigger) => _machine.CanFire(trigger);
+    }
 
-    _machine.Configure(BugState.Triage)
-        .Permit(BugTrigger.StartFix, BugState.Fixing)
-        .Permit(BugTrigger.NeedInfo, BugState.NeedInfo)
-        .Permit(BugTrigger.OtherProduct, BugState.OtherProduct)
-        .Permit(BugTrigger.NeedDecisionLater, BugState.NeedDecisionLater)
-        .Permit(BugTrigger.MarkNotBug, BugState.NotABug)
-        .Permit(BugTrigger.MarkWontFix, BugState.WontFix)
-        .Permit(BugTrigger.MarkDuplicate, BugState.Duplicate)
-        .Permit(BugTrigger.MarkNotRepro, BugState.NotReproducible);
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            var bug = new Bug("Исправление ошибок компиляции");
+            Console.WriteLine($"Bug: {bug.Title}, State: {bug.CurrentState}");
 
-    _machine.Configure(BugState.NeedInfo)
-        .Permit(BugTrigger.Return, BugState.Returned);
-    _machine.Configure(BugState.OtherProduct)
-        .Permit(BugTrigger.Return, BugState.Returned);
-    _machine.Configure(BugState.NeedDecisionLater)
-        .Permit(BugTrigger.Return, BugState.Returned);
-    _machine.Configure(BugState.NotABug)
-        .Permit(BugTrigger.Return, BugState.Returned);
-    _machine.Configure(BugState.WontFix)
-        .Permit(BugTrigger.Return, BugState.Returned);
-    _machine.Configure(BugState.Duplicate)
-        .Permit(BugTrigger.Return, BugState.Returned);
-    _machine.Configure(BugState.NotReproducible)
-        .Permit(BugTrigger.Approve, BugState.Closed)
-        .Permit(BugTrigger.Reject, BugState.Returned);
+            bug.Assign("Dev_User");
+            Console.WriteLine($"Assigned to: {bug.Assignee}, State: {bug.CurrentState}");
 
-    _machine.Configure(BugState.Returned)
-        .Permit(BugTrigger.StartTriage, BugState.Triage);
-
-    _machine.Configure(BugState.Fixing)
-        .Permit(BugTrigger.MarkFixed, BugState.Verification)
-        .Permit(BugTrigger.NeedInfo, BugState.NeedInfo)
-        .Permit(BugTrigger.OtherProduct, BugState.OtherProduct)
-        .Permit(BugTrigger.NeedDecisionLater, BugState.NeedDecisionLater)
-        .Permit(BugTrigger.MarkNotRepro, BugState.NotReproducible);
-
-    _machine.Configure(BugState.Verification)
-        .Permit(BugTrigger.Approve, BugState.Closed)
-        .Permit(BugTrigger.Reject, BugState.Returned);
-
-    _machine.Configure(BugState.Closed)
-        .Permit(BugTrigger.Reopen, BugState.Triage);
-
-    _machine.Configure(BugState.Reopened)
-        .Permit(BugTrigger.StartTriage, BugState.Triage);
-  }
-}
-
-public static class Program {
-  public static void Main() {
-    var bug = new Bug();
-    Console.WriteLine($"Initial: {bug.State}");
-
-    bug.StartTriage();
-    Console.WriteLine($"Start triage: {bug.State}");
-
-    bug.StartFix();
-    Console.WriteLine($"Start fix: {bug.State}");
-
-    bug.MarkFixed();
-    Console.WriteLine($"Mark fixed: {bug.State}");
-
-    bug.Approve();
-    Console.WriteLine($"Approve: {bug.State}");
-
-    bug.Reopen();
-    Console.WriteLine($"Reopen: {bug.State}");
-
-    bug.StartTriage();
-    Console.WriteLine($"Reopened -> Start triage: {bug.State}");
-  }
+            bug.SendToTest();
+            Console.WriteLine($"State: {bug.CurrentState}");
+        }
+    }
 }
