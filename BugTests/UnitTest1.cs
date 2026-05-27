@@ -24,7 +24,7 @@ namespace BugTests
             }
             catch (InvalidOperationException)
             {
-                // InvalidOperationException
+                // Invalid Operation Exception
             }
             catch (Exception ex)
             {
